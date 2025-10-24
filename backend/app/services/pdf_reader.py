@@ -1,106 +1,111 @@
+"""
+PDF text extraction service using PyMuPDF (fitz)
+"""
 import fitz  # PyMuPDF
 from typing import List
+from fastapi import UploadFile, HTTPException
 import io
 
-
 class PDFReader:
-    """
-    Extract text content from PDF files using PyMuPDF
-    """
-
+    """Service for extracting text from PDF files"""
+    
     @staticmethod
-    def extract_text_from_pdf(file_content: bytes) -> str:
+    async def extract_text_from_pdf(file: UploadFile) -> str:
         """
-        Extract text from a single PDF file
-
+        Extract text content from a single PDF file.
+        
         Args:
-            file_content: PDF file content as bytes
-
+            file: UploadFile object from FastAPI
+            
         Returns:
             Extracted text as string
+            
+        Raises:
+            HTTPException: If PDF cannot be processed
         """
         try:
-            # Open PDF from bytes
-            pdf_document = fitz.open(stream=file_content, filetype="pdf")
-
+            # Read file content
+            content = await file.read()
+            
+            # Open PDF with PyMuPDF
+            pdf_document = fitz.open(stream=content, filetype="pdf")
+            
+            # Extract text from all pages
             text_content = []
-
-            # Iterate through pages
             for page_num in range(pdf_document.page_count):
                 page = pdf_document[page_num]
-                text = page.get_text()
-
-                if text.strip():  # Only add non-empty pages
-                    text_content.append(text)
-
+                text_content.append(page.get_text())
+            
+            # Close document
             pdf_document.close()
-
-            # Join all pages with double newline
+            
+            # Combine all pages
             full_text = "\n\n".join(text_content)
-
-            return full_text.strip()
-
+            
+            # Clean up extra whitespace
+            full_text = " ".join(full_text.split())
+            
+            if not full_text.strip():
+                raise ValueError("No text content found in PDF")
+            
+            return full_text
+            
         except Exception as e:
-            raise ValueError(f"Failed to extract text from PDF: {str(e)}")
-
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "message": f"Failed to extract text from PDF: {str(e)}",
+                        "code": "PDF_EXTRACTION_FAILED"
+                    }
+                }
+            )
+    
     @staticmethod
-    def extract_text_from_multiple_pdfs(files_content: List[tuple]) -> tuple:
+    async def extract_text_from_multiple_pdfs(files: List[UploadFile]) -> dict:
         """
-        Extract text from multiple PDF files
-
+        Extract text from multiple PDF files.
+        
         Args:
-            files_content: List of tuples (filename, file_bytes)
-
+            files: List of UploadFile objects
+            
         Returns:
-            Tuple of (combined_text, list_of_filenames)
+            Dictionary with combined text and individual file texts
         """
-        all_texts = []
-        file_names = []
-
-        for filename, file_bytes in files_content:
-            try:
-                text = PDFReader.extract_text_from_pdf(file_bytes)
-                if text:
-                    all_texts.append(f"--- Content from {filename} ---\n{text}")
-                    file_names.append(filename)
-            except Exception as e:
-                print(f"Error processing {filename}: {str(e)}")
-                continue
-
-        # Combine all texts
-        combined_text = "\n\n".join(all_texts)
-
-        return combined_text, file_names
-
+        file_texts = {}
+        all_text = []
+        
+        for file in files:
+            text = await PDFReader.extract_text_from_pdf(file)
+            file_texts[file.filename] = text
+            all_text.append(f"=== {file.filename} ===\n{text}")
+        
+        return {
+            "combined_text": "\n\n".join(all_text),
+            "individual_files": file_texts,
+            "file_names": [f.filename for f in files]
+        }
+    
     @staticmethod
-    def chunk_text(text: str, max_length: int = 3000) -> List[str]:
+    def truncate_text(text: str, max_length: int = 3000) -> str:
         """
-        Split text into chunks if it exceeds max_length
-
+        Truncate text to maximum length for model input.
+        
         Args:
             text: Input text
-            max_length: Maximum length per chunk
-
+            max_length: Maximum character length
+            
         Returns:
-            List of text chunks
+            Truncated text
         """
         if len(text) <= max_length:
-            return [text]
-
-        # Split by paragraphs first
-        paragraphs = text.split("\n\n")
-        chunks = []
-        current_chunk = ""
-
-        for para in paragraphs:
-            if len(current_chunk) + len(para) + 2 <= max_length:
-                current_chunk += para + "\n\n"
-            else:
-                if current_chunk:
-                    chunks.append(current_chunk.strip())
-                current_chunk = para + "\n\n"
-
-        if current_chunk:
-            chunks.append(current_chunk.strip())
-
-        return chunks
+            return text
+        
+        # Try to cut at a sentence boundary
+        truncated = text[:max_length]
+        last_period = truncated.rfind('.')
+        
+        if last_period > max_length * 0.8:  # If we're close enough to the limit
+            return truncated[:last_period + 1]
+        
+        return truncated

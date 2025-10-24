@@ -1,86 +1,90 @@
+"""
+Routes for downloading summaries in multiple formats
+"""
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models.summary import User, Summary
-from app.routes.auth import verify_token
-from app.services.export_service import ExportService
-import uuid
-import io
+from app.services.auth import verify_firebase_token
+from app.services.export_service import export_service
 
 router = APIRouter()
 
-
-@router.get("/download")
+@router.get("/summaries/{summary_id}/download")
 async def download_summary(
-        summary_id: str = Query(..., description="Summary ID to download"),
-        type: str = Query(..., regex="^(txt|pdf|docx)$", description="Export format"),
-        db: Session = Depends(get_db),
-        current_user: dict = Depends(verify_token)
+    summary_id: str,
+    format: str = Query(..., regex="^(txt|pdf|docx)$"),
+    user: User = Depends(verify_firebase_token),
+    db: Session = Depends(get_db)
 ):
     """
-    Download summary in specified format (txt, pdf, docx)
+    Download summary in specified format.
+    
+    Path Parameters:
+        - summary_id: UUID of the summary
+        
+    Query Parameters:
+        - format: File format (txt|pdf|docx)
+        
+    Response:
+        - Binary file download with appropriate content type
     """
-    try:
-        # Get summary
-        summary = db.query(Summary).filter(
-            Summary.id == uuid.UUID(summary_id)
-        ).first()
-
-        if not summary:
-            raise HTTPException(
-                status_code=404,
-                detail="Summary not found"
-            )
-
-        # Verify ownership
-        user = db.query(User).filter(User.email == current_user['email']).first()
-        if not user or summary.user_id != user.id:
-            raise HTTPException(
-                status_code=403,
-                detail="Not authorized to download this summary"
-            )
-
-        # Prepare summary data
-        summary_data = {
-            "summary_id": str(summary.id),
-            "file_names": summary.file_names,
-            "context_type": summary.context_type,
-            "summary": summary.summary,
-            "created_at": summary.created_at
-        }
-
-        export_service = ExportService()
-
-        # Generate file based on type
-        if type == "txt":
-            content = export_service.export_to_txt(summary_data)
-            media_type = "text/plain"
-            filename = f"summary_{summary_id[:8]}.txt"
-
-        elif type == "pdf":
-            content = export_service.export_to_pdf(summary_data)
-            media_type = "application/pdf"
-            filename = f"summary_{summary_id[:8]}.pdf"
-
-        elif type == "docx":
-            content = export_service.export_to_docx(summary_data)
-            media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            filename = f"summary_{summary_id[:8]}.docx"
-
-        # Create streaming response
-        return StreamingResponse(
-            io.BytesIO(content),
-            media_type=media_type,
-            headers={
-                "Content-Disposition": f"attachment; filename={filename}"
+    # Get summary from database
+    summary = db.query(Summary).filter(
+        Summary.id == summary_id,
+        Summary.user_id == user.id
+    ).first()
+    
+    if not summary:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": {
+                    "message": "Summary not found",
+                    "code": "NOT_FOUND"
+                }
             }
         )
-
-    except HTTPException:
-        raise
+    
+    try:
+        # Generate file based on format
+        if format == "txt":
+            file_content = export_service.export_to_txt(summary)
+            media_type = "text/plain"
+            file_extension = "txt"
+            
+        elif format == "pdf":
+            file_content = export_service.export_to_pdf(summary)
+            media_type = "application/pdf"
+            file_extension = "pdf"
+            
+        elif format == "docx":
+            file_content = export_service.export_to_docx(summary)
+            media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            file_extension = "docx"
+        
+        # Generate filename
+        base_filename = summary.file_names[0].replace('.pdf', '') if summary.file_names else 'summary'
+        filename = f"{base_filename}_summary.{file_extension}"
+        
+        # Return file as download
+        return Response(
+            content=file_content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
+        
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Error generating download: {str(e)}"
+            detail={
+                "error": {
+                    "message": f"Failed to generate {format.upper()} file: {str(e)}",
+                    "code": "EXPORT_FAILED"
+                }
+            }
         )

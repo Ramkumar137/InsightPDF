@@ -22,8 +22,8 @@ wheels/
 
 # Virtual Environment
 venv/
-ENV/
 env/
+ENV/
 .venv
 
 # Environment Variables
@@ -31,11 +31,11 @@ env/
 .env.local
 .env.*.local
 
-# Firebase
-serviceAccountKey.json
+# Firebase Credentials (IMPORTANT - Never commit!)
 firebase-credentials.json
+*-firebase-adminsdk-*.json
 
-# IDEs
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -43,11 +43,15 @@ firebase-credentials.json
 *~
 .DS_Store
 
-# Uploads
-uploads/
-*.pdf
-*.txt
-*.docx
+# Jupyter Notebooks
+.ipynb_checkpoints
+*.ipynb
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
 # Database
 *.db
@@ -58,15 +62,17 @@ uploads/
 *.log
 logs/
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
+# Model cache (Hugging Face transformers)
+.cache/
+models/
 
-# Docker
-.dockerignore
+# Alembic
+alembic/versions/*.pyc
 
-# In backend/.gitignore
-serviceAccountKey.json
-*.json  # If you want to ignore all JSON files
-firebase-*.json
+# Temporary files
+*.tmp
+temp/
+tmp/
+
+# OS
+Thumbs.db

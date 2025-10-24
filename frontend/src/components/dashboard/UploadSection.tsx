@@ -1,39 +1,26 @@
+/**
+ * UploadSection Component - Updated with Backend Integration
+ * Replace your existing UploadSection.tsx with this code
+ */
+
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, X, FileText } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Upload, FileText, X, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { uploadAndSummarize } from "@/lib/api-client";
 
-const contextTypes = [
-  {
-    value: "executive",
-    label: "Executive",
-    description: "High-level overview and key decisions",
-  },
-  {
-    value: "student",
-    label: "Student",
-    description: "Detailed explanations and learning focus",
-  },
-  {
-    value: "analyst",
-    label: "Analyst",
-    description: "Data-driven insights and trends",
-  },
-  {
-    value: "general",
-    label: "General Summary",
-    description: "Balanced, concise overview",
-  },
-];
+interface UploadSectionProps {
+  onSummaryGenerated: (summary: any) => void;
+}
 
-export const UploadSection = () => {
+export function UploadSection({ onSummaryGenerated }: UploadSectionProps) {
   const [files, setFiles] = useState<File[]>([]);
-  const [contextType, setContextType] = useState<string>("");
+  const [contextType, setContextType] = useState("executive");
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -48,24 +35,22 @@ export const UploadSection = () => {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
-    const droppedFiles = Array.from(e.dataTransfer.files).filter(
-      (file) => file.type === "application/pdf"
-    );
-    
-    if (droppedFiles.length === 0) {
+
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    const pdfFiles = droppedFiles.filter((file) => file.type === "application/pdf");
+
+    if (pdfFiles.length !== droppedFiles.length) {
       toast({
-        title: "Invalid file type",
-        description: "Please upload PDF files only.",
+        title: "Invalid files",
+        description: "Only PDF files are allowed",
         variant: "destructive",
       });
-      return;
     }
-    
-    setFiles((prev) => [...prev, ...droppedFiles]);
+
+    setFiles((prev) => [...prev, ...pdfFiles]);
   };
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
       setFiles((prev) => [...prev, ...selectedFiles]);
@@ -76,127 +61,180 @@ export const UploadSection = () => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (files.length === 0) {
       toast({
         title: "No files selected",
-        description: "Please upload at least one PDF file.",
+        description: "Please select at least one PDF file",
         variant: "destructive",
       });
       return;
     }
-    
-    if (!contextType) {
+
+    setIsUploading(true);
+
+    try {
+      const result = await uploadAndSummarize(files, contextType);
+      
       toast({
-        title: "Context type required",
-        description: "Please select a context type for summarization.",
+        title: "Summary generated!",
+        description: `Successfully processed ${files.length} file(s)`,
+      });
+
+      // Pass the result to parent component
+      onSummaryGenerated(result);
+
+      // Clear files after successful upload
+      setFiles([]);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate summary",
         variant: "destructive",
       });
-      return;
+    } finally {
+      setIsUploading(false);
     }
-    
-    // Will be implemented with backend
-    toast({
-      title: "Processing...",
-      description: "Your PDFs are being summarized.",
-    });
   };
 
   return (
-    <Card className="shadow-elegant">
-      <CardHeader>
-        <CardTitle>Upload PDFs</CardTitle>
-        <CardDescription>
-          Upload one or more PDF files and select the context type for summarization
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* File Upload Area */}
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${
-            isDragging ? "border-primary bg-primary/5" : "border-border"
-          }`}
-        >
-          <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-          <p className="text-sm text-muted-foreground mb-2">
-            Drag and drop PDF files here, or
-          </p>
-          <Label htmlFor="file-upload">
-            <Button variant="outline" asChild>
-              <span className="cursor-pointer">Browse Files</span>
-            </Button>
-          </Label>
-          <Input
-            id="file-upload"
+    <div className="space-y-6">
+      {/* Upload Area */}
+      <Card
+        className={`border-2 border-dashed p-8 transition-colors ${
+          isDragging ? "border-primary bg-primary/5" : "border-gray-300"
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div className="flex flex-col items-center justify-center space-y-4">
+          <div className="rounded-full bg-primary/10 p-4">
+            <Upload className="h-8 w-8 text-primary" />
+          </div>
+          <div className="text-center">
+            <p className="text-lg font-medium">Drop your PDF files here</p>
+            <p className="text-sm text-muted-foreground">
+              or click to browse your computer
+            </p>
+          </div>
+          <input
             type="file"
             accept=".pdf"
             multiple
-            onChange={handleFileInput}
             className="hidden"
+            id="file-upload"
+            onChange={handleFileSelect}
+            disabled={isUploading}
           />
+          <label htmlFor="file-upload">
+            <Button variant="outline" disabled={isUploading} asChild>
+              <span className="cursor-pointer">Browse Files</span>
+            </Button>
+          </label>
         </div>
+      </Card>
 
-        {/* File List */}
-        {files.length > 0 && (
+      {/* Selected Files */}
+      {files.length > 0 && (
+        <Card className="p-4">
+          <h3 className="mb-3 font-medium">Selected Files ({files.length})</h3>
           <div className="space-y-2">
-            <Label>Uploaded Files ({files.length})</Label>
-            <div className="space-y-2">
-              {files.map((file, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 bg-secondary rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-primary" />
-                    <span className="text-sm font-medium">{file.name}</span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeFile(index)}
-                    className="h-8 w-8"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+            {files.map((file, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between rounded-md border p-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm">{file.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                  </span>
                 </div>
-              ))}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeFile(index)}
+                  disabled={isUploading}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Context Selection */}
+      <Card className="p-6">
+        <h3 className="mb-4 font-medium">Select Summary Context</h3>
+        <RadioGroup value={contextType} onValueChange={setContextType} disabled={isUploading}>
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="executive" id="executive" />
+              <Label htmlFor="executive" className="cursor-pointer">
+                <div>
+                  <p className="font-medium">Executive</p>
+                  <p className="text-sm text-muted-foreground">
+                    High-level insights and strategic decisions
+                  </p>
+                </div>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="student" id="student" />
+              <Label htmlFor="student" className="cursor-pointer">
+                <div>
+                  <p className="font-medium">Student</p>
+                  <p className="text-sm text-muted-foreground">
+                    Clear explanations and learning insights
+                  </p>
+                </div>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="analyst" id="analyst" />
+              <Label htmlFor="analyst" className="cursor-pointer">
+                <div>
+                  <p className="font-medium">Analyst</p>
+                  <p className="text-sm text-muted-foreground">
+                    Trends, data points, and analysis
+                  </p>
+                </div>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="general" id="general" />
+              <Label htmlFor="general" className="cursor-pointer">
+                <div>
+                  <p className="font-medium">General</p>
+                  <p className="text-sm text-muted-foreground">
+                    Brief and clear summary
+                  </p>
+                </div>
+              </Label>
             </div>
           </div>
+        </RadioGroup>
+      </Card>
+
+      {/* Submit Button */}
+      <Button
+        onClick={handleSubmit}
+        disabled={files.length === 0 || isUploading}
+        className="w-full"
+        size="lg"
+      >
+        {isUploading ? (
+          <>
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Generating Summary...
+          </>
+        ) : (
+          "Generate Summary"
         )}
-
-        {/* Context Type Selector */}
-        <div className="space-y-2">
-          <Label>Context Type</Label>
-          <Select value={contextType} onValueChange={setContextType}>
-            <SelectTrigger className="bg-background">
-              <SelectValue placeholder="Select context type" />
-            </SelectTrigger>
-            <SelectContent className="bg-popover">
-              {contextTypes.map((type) => (
-                <SelectItem key={type.value} value={type.value}>
-                  <div>
-                    <div className="font-medium">{type.label}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {type.description}
-                    </div>
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Generate Button */}
-        <Button
-          onClick={handleSubmit}
-          className="w-full bg-gradient-primary hover:shadow-glow transition-all duration-300"
-        >
-          Generate Summary
-        </Button>
-      </CardContent>
-    </Card>
+      </Button>
+    </div>
   );
-};
+}

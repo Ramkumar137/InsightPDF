@@ -1,0 +1,33 @@
+# FastAPI Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+alembic==1.12.1
+
+# Authentication
+firebase-admin==6.2.0
+
+# AI/ML
+transformers==4.35.2
+torch==2.1.1
+sentencepiece==0.1.99
+
+# PDF Processing
+PyMuPDF==1.23.8
+pdfminer.six==20221105
+
+# File Export
+reportlab==4.0.7
+python-docx==1.1.0
+
+# Configuration
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# Utilities
+python-jose[cryptography]==3.3.0
