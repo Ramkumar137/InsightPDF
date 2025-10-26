@@ -31,8 +31,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8080",
         "http://localhost:5173",
         "http://localhost:3000",
-         "https://your-app.vercel.app",
-        "https://*.vercel.app",
+        "https://your-project.web.app",
+        "https://your-project.firebaseapp.com",
     ]
     
     # File Upload Settings
