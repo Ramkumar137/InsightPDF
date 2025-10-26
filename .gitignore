@@ -3,3 +3,7 @@ nbackend/serviceAccountKey.json
 nbackend/.env 
 frontend/node_modules/ 
 frontend/.env 
+backend/serviceAccountKey.json 
+backend/.env 
+frontend/node_modules/ 
+frontend/.env 
