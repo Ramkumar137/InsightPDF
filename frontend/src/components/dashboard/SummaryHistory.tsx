@@ -1,6 +1,6 @@
 /**
  * SummaryHistory Component
- * FIXED: Display times in IST timezone
+ * FINAL FIX: Correctly calculates time difference in IST
  */
 
 import { useEffect, useState } from "react";
@@ -101,35 +101,34 @@ export function SummaryHistory({
     }
   };
 
-  // FIXED: Convert UTC to IST and format
+  // FINAL FIX: Correct time difference calculation
   const formatDate = (timestamp: string) => {
     // Parse the UTC timestamp
-    const date = new Date(timestamp);
-    
-    // Convert to IST (UTC + 5:30)
-    const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
-    
+    const utcDate = new Date(timestamp);
     const now = new Date();
-    const istNow = new Date(now.getTime() + (5.5 * 60 * 60 * 1000));
     
-    const diffInHours = (istNow.getTime() - istDate.getTime()) / (1000 * 60 * 60);
+    // Calculate difference using UTC times (correct way)
+    const diffInMs = now.getTime() - utcDate.getTime();
+    const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+    const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+    const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
 
     // Format based on how recent it is
-    if (diffInHours < 1) {
-      const minutes = Math.floor(diffInHours * 60);
-      return minutes <= 0 ? 'Just now' : `${minutes}m ago`;
+    if (diffInMinutes < 1) {
+      return 'Just now';
+    } else if (diffInMinutes < 60) {
+      return `${diffInMinutes}m ago`;
     } else if (diffInHours < 24) {
-      const hours = Math.floor(diffInHours);
-      return `${hours}h ago`;
-    } else if (diffInHours < 168) { // Less than 7 days
-      const days = Math.floor(diffInHours / 24);
-      return `${days}d ago`;
+      return `${diffInHours}h ago`;
+    } else if (diffInDays < 7) {
+      return `${diffInDays}d ago`;
     } else {
-      // For older items, show full date in IST
+      // For older items, show date in IST
+      const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000));
       return istDate.toLocaleDateString('en-IN', {
         day: 'numeric',
         month: 'short',
-        year: istDate.getFullYear() !== istNow.getFullYear() ? 'numeric' : undefined
+        year: istDate.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
       });
     }
   };
