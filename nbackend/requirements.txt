@@ -11,14 +11,12 @@ alembic==1.12.1
 # Authentication
 firebase-admin==6.2.0
 
-# AI/ML
-transformers==4.35.2
-torch==2.1.1
-sentencepiece==0.1.99
+# PDF Processing - UPDATED
+PyPDF2==3.0.1
+pdfplumber==0.10.3
 
-# PDF Processing
-PyMuPDF==1.23.8
-pdfminer.six==20221105
+# AI/ML - UPDATED: Removed transformers and torch
+google-generativeai==0.3.2
 
 # File Export
 reportlab==4.0.7

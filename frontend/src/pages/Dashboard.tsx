@@ -1,6 +1,5 @@
 /**
- * Dashboard Component - Updated with Complete Backend Integration
- * Replace your existing Dashboard.tsx with this code
+ * Dashboard - FIXED: Auto-refreshes history on new summaries
  */
 
 import { useState, useEffect } from "react";
@@ -12,7 +11,24 @@ import { UploadSection } from "@/components/dashboard/UploadSection";
 import { SummaryDisplay } from "@/components/dashboard/SummaryDisplay";
 import { SummaryHistory } from "@/components/dashboard/SummaryHistory";
 import { useToast } from "@/hooks/use-toast";
-import { checkApiHealth } from "@/lib/api-client";
+
+const checkBackendHealth = async (): Promise<boolean> => {
+  try {
+    const API_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    const response = await fetch(`${API_URL}/health`, {
+      method: 'GET',
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -22,23 +38,21 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentSummary, setCurrentSummary] = useState<any>(null);
   const [apiHealthy, setApiHealthy] = useState(true);
+  const [healthCheckAttempts, setHealthCheckAttempts] = useState(0);
+  const [historyRefreshTrigger, setHistoryRefreshTrigger] = useState(0); // NEW: Trigger history refresh
 
   // Check authentication
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
+        const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           navigate("/login");
           return;
         }
-
         setUser(session.user);
       } catch (error) {
-        console.error("Auth check error:", error);
+        console.error("Auth error:", error);
         navigate("/login");
       } finally {
         setLoading(false);
@@ -47,10 +61,7 @@ export default function Dashboard() {
 
     checkAuth();
 
-    // Subscribe to auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
         navigate("/login");
       } else if (session) {
@@ -58,27 +69,39 @@ export default function Dashboard() {
       }
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Check API health on mount
+  // Check API health
   useEffect(() => {
+    let isMounted = true;
+    
     const checkHealth = async () => {
-      const healthy = await checkApiHealth();
-      setApiHealthy(healthy);
+      const healthy = await checkBackendHealth();
       
-      if (!healthy) {
-        toast({
-          title: "Backend Offline",
-          description: "The API server is not responding. Please ensure the backend is running.",
-          variant: "destructive",
-        });
+      if (isMounted) {
+        setApiHealthy(healthy);
+        setHealthCheckAttempts(prev => prev + 1);
+        
+        if (!healthy && healthCheckAttempts < 2) {
+          setTimeout(() => {
+            if (isMounted) checkHealth();
+          }, 2000);
+        } else if (!healthy) {
+          toast({
+            title: "Backend Connection Issue",
+            description: "Cannot connect to backend. Some features may not work.",
+            variant: "destructive",
+          });
+        }
       }
     };
 
-    checkHealth();
+    const timeoutId = setTimeout(checkHealth, 500);
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
   }, [toast]);
 
   const handleLogout = async () => {
@@ -96,7 +119,16 @@ export default function Dashboard() {
   };
 
   const handleSummaryGenerated = (summary: any) => {
+    console.log('🎉 New summary generated:', summary.summaryId);
     setCurrentSummary(summary);
+    setApiHealthy(true);
+    
+    // Trigger history refresh
+    setHistoryRefreshTrigger(prev => prev + 1);
+    
+    // Auto-open sidebar to show new summary in history
+    setSidebarOpen(true);
+    
     toast({
       title: "Success!",
       description: "Your PDF summary has been generated",
@@ -104,10 +136,12 @@ export default function Dashboard() {
   };
 
   const handleSelectSummary = (summary: any) => {
+    console.log('📖 Selected summary:', summary.summaryId);
     setCurrentSummary(summary);
   };
 
   const handleNewSummary = () => {
+    console.log('📝 Creating new summary');
     setCurrentSummary(null);
   };
 
@@ -124,33 +158,35 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen flex-col">
-      {/* Header */}
       <DashboardHeader
         user={user}
         onLogout={handleLogout}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
       />
 
-      {/* API Health Warning */}
-      {!apiHealthy && (
-        <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-2 text-center">
-          <p className="text-sm text-destructive">
-            ⚠️ Backend API is offline. Please start the backend server: <code className="bg-muted px-2 py-1 rounded">uvicorn main:app --reload</code>
+      {!apiHealthy && healthCheckAttempts >= 2 && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-center">
+          <p className="text-sm text-yellow-800">
+            ⚠️ Backend connection issues detected. 
+            <button 
+              onClick={() => window.location.reload()} 
+              className="ml-2 underline hover:no-underline"
+            >
+              Click to retry
+            </button>
           </p>
         </div>
       )}
 
-      {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
         <SummaryHistory
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           onSelectSummary={handleSelectSummary}
           onNewSummary={handleNewSummary}
+          refreshTrigger={historyRefreshTrigger} // Pass trigger to force refresh
         />
 
-        {/* Main Area */}
         <main className="flex-1 overflow-y-auto p-6">
           <div className="mx-auto max-w-5xl">
             {!currentSummary ? (
@@ -160,7 +196,7 @@ export default function Dashboard() {
                     Context-Aware PDF Summarizer
                   </h1>
                   <p className="text-muted-foreground">
-                    Upload your PDF documents and get AI-powered summaries tailored to your needs
+                    Upload your PDF documents and get AI-powered summaries powered by Gemini
                   </p>
                 </div>
                 <UploadSection onSummaryGenerated={handleSummaryGenerated} />

@@ -1,5 +1,6 @@
 """
 Routes for PDF upload and summarization
+FIXED: Refine endpoint properly configured
 """
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -8,7 +9,7 @@ from datetime import datetime
 
 from app.database import get_db
 from app.models.summary import User, Summary
-from app.services.auth import verify_firebase_token
+from app.services.auth import verify_supabase_token as verify_firebase_token
 from app.services.pdf_reader import PDFReader
 from app.services.summarizer import summarization_service
 from app.config import settings
@@ -22,18 +23,8 @@ async def create_summary(
     user: User = Depends(verify_firebase_token),
     db: Session = Depends(get_db)
 ):
-    """
-    Upload PDF files and generate context-aware summary.
+    """Upload PDF files and generate context-aware summary."""
     
-    Request:
-        - files: List of PDF files (multipart/form-data)
-        - contextType: executive|student|analyst|general
-        
-    Response:
-        - summaryId: UUID of created summary
-        - content: Structured summary with sections
-        - metadata: File names, context, timestamp
-    """
     # Validate context type
     valid_contexts = ["executive", "student", "analyst", "general"]
     if contextType not in valid_contexts:
@@ -47,44 +38,36 @@ async def create_summary(
             }
         )
     
-    # Validate files
     if not files:
         raise HTTPException(
             status_code=400,
-            detail={
-                "error": {
-                    "message": "No files uploaded",
-                    "code": "NO_FILES"
-                }
-            }
+            detail={"error": {"message": "No files uploaded", "code": "NO_FILES"}}
         )
     
-    # Validate file types and size
+    # Validate file types
     for file in files:
         if not file.filename.endswith('.pdf'):
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": {
-                        "message": f"Invalid file type: {file.filename}. Only PDF files are allowed.",
+                        "message": f"Invalid file type: {file.filename}",
                         "code": "INVALID_FILE_TYPE"
                     }
                 }
             )
         
-        # Check file size (read content to get size)
         content = await file.read()
         if len(content) > settings.MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": {
-                        "message": f"File {file.filename} exceeds maximum size of {settings.MAX_FILE_SIZE / (1024*1024)}MB",
+                        "message": f"File too large: {file.filename}",
                         "code": "FILE_TOO_LARGE"
                     }
                 }
             )
-        # Reset file pointer after reading
         await file.seek(0)
     
     try:
@@ -93,11 +76,15 @@ async def create_summary(
         combined_text = pdf_data["combined_text"]
         file_names = pdf_data["file_names"]
         
-        # Generate structured summary
+        print(f"📄 Processing {len(files)} files, {len(combined_text)} chars")
+        
+        # Generate structured summary using Gemini
         summary_content = summarization_service.generate_structured_summary(
             combined_text,
             contextType
         )
+        
+        print(f"✅ Summary generated for context: {contextType}")
         
         # Create summary record in database
         new_summary = Summary(
@@ -114,7 +101,9 @@ async def create_summary(
         db.commit()
         db.refresh(new_summary)
         
-        # Return response matching frontend expectations
+        print(f"💾 Saved summary with ID: {new_summary.id}")
+        
+        # Return response
         return {
             "summaryId": str(new_summary.id),
             "content": {
@@ -134,6 +123,7 @@ async def create_summary(
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Error: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail={
@@ -144,6 +134,7 @@ async def create_summary(
             }
         )
 
+# FIXED: This is the refine endpoint - notice it's under /summarize router
 @router.post("/summarize/{summary_id}/refine")
 async def refine_summary(
     summary_id: str,
@@ -152,17 +143,12 @@ async def refine_summary(
     db: Session = Depends(get_db)
 ):
     """
-    Refine an existing summary with different actions.
+    Refine an existing summary.
     
-    Actions:
-        - shorten: Generate shorter version
-        - refine: Improve clarity and remove redundancy
-        - regenerate: Regenerate with same parameters
-        
-    Response:
-        - summaryId: UUID of summary
-        - content: Updated summary content
+    Actions: shorten, refine, regenerate
     """
+    print(f"🔄 Refine request: {action} for summary {summary_id}")
+    
     # Validate action
     valid_actions = ["shorten", "refine", "regenerate"]
     if action not in valid_actions:
@@ -183,6 +169,7 @@ async def refine_summary(
     ).first()
     
     if not summary:
+        print(f"❌ Summary not found: {summary_id}")
         raise HTTPException(
             status_code=404,
             detail={
@@ -194,16 +181,17 @@ async def refine_summary(
         )
     
     try:
-        # Combine existing content for context
+        # Combine existing content
         full_content = f"{summary.overview}\n\n{summary.key_insights}"
         if summary.risks:
             full_content += f"\n\n{summary.risks}"
         if summary.recommendations:
             full_content += f"\n\n{summary.recommendations}"
         
-        # Apply action
+        print(f"🤖 Applying action: {action}")
+        
+        # Apply action using Gemini
         if action == "shorten":
-            # Shorten each section
             summary.overview = summarization_service.shorten_summary(
                 summary.overview,
                 summary.context_type
@@ -214,7 +202,6 @@ async def refine_summary(
             )
             
         elif action == "refine":
-            # Refine for clarity
             summary.overview = summarization_service.refine_summary(
                 summary.overview,
                 summary.context_type
@@ -225,8 +212,6 @@ async def refine_summary(
             )
             
         elif action == "regenerate":
-            # Note: Ideally we'd re-process the original PDFs
-            # For now, we regenerate from existing content
             new_content = summarization_service.generate_structured_summary(
                 full_content,
                 summary.context_type
@@ -243,6 +228,8 @@ async def refine_summary(
         db.commit()
         db.refresh(summary)
         
+        print(f"✅ Summary refined successfully")
+        
         return {
             "summaryId": str(summary.id),
             "content": {
@@ -255,6 +242,7 @@ async def refine_summary(
         }
         
     except Exception as e:
+        print(f"❌ Refine error: {str(e)}")
         db.rollback()
         raise HTTPException(
             status_code=500,

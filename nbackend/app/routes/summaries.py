@@ -1,5 +1,6 @@
 """
 Routes for retrieving summary history and individual summaries
+FIXED: Using Supabase authentication
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -7,7 +8,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.models.summary import User, Summary
-from app.services.auth import verify_firebase_token
+from app.services.auth import verify_supabase_token as verify_firebase_token
 
 router = APIRouter()
 
@@ -30,8 +31,12 @@ async def get_summaries(
         - total: Total count of user's summaries
     """
     try:
-        # Get total count
+        print(f"📚 Fetching summaries for user: {user.email} (ID: {user.id})")
+        
+        # Get total count for this specific user
         total = db.query(Summary).filter(Summary.user_id == user.id).count()
+        
+        print(f"📊 User has {total} total summaries")
         
         # Get summaries with pagination, ordered by most recent first
         summaries = db.query(Summary).filter(
@@ -43,6 +48,8 @@ async def get_summaries(
         # Convert to response format
         summary_list = [s.to_history_dict() for s in summaries]
         
+        print(f"✅ Returning {len(summary_list)} summaries")
+        
         return {
             "summaries": summary_list,
             "total": total,
@@ -51,6 +58,7 @@ async def get_summaries(
         }
         
     except Exception as e:
+        print(f"❌ Error fetching summaries: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail={
@@ -77,13 +85,16 @@ async def get_summary(
         - Full summary object with all content sections
     """
     try:
-        # Get summary from database
+        print(f"📖 Fetching summary {summary_id} for user {user.email}")
+        
+        # Get summary from database (only user's own summaries)
         summary = db.query(Summary).filter(
             Summary.id == summary_id,
             Summary.user_id == user.id
         ).first()
         
         if not summary:
+            print(f"❌ Summary not found or not owned by user")
             raise HTTPException(
                 status_code=404,
                 detail={
@@ -115,6 +126,7 @@ async def get_summary(
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Error fetching summary: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail={
@@ -142,7 +154,9 @@ async def delete_summary(
         - message: Confirmation message
     """
     try:
-        # Get summary from database
+        print(f"🗑️ Deleting summary {summary_id} for user {user.email}")
+        
+        # Get summary from database (only user's own summaries)
         summary = db.query(Summary).filter(
             Summary.id == summary_id,
             Summary.user_id == user.id
@@ -163,6 +177,8 @@ async def delete_summary(
         db.delete(summary)
         db.commit()
         
+        print(f"✅ Summary deleted successfully")
+        
         return {
             "success": True,
             "message": "Summary deleted successfully",
@@ -172,6 +188,7 @@ async def delete_summary(
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ Error deleting summary: {str(e)}")
         db.rollback()
         raise HTTPException(
             status_code=500,

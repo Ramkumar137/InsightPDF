@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.summary import User, Summary
-from app.services.auth import verify_firebase_token
+from app.services.auth import verify_supabase_token as verify_firebase_token
 from app.services.export_service import export_service
 
 router = APIRouter()

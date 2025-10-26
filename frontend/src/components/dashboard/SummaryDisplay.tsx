@@ -1,6 +1,6 @@
 /**
- * SummaryDisplay Component - Updated with Backend Integration
- * Replace your existing SummaryDisplay.tsx with this code
+ * SummaryDisplay Component
+ * FIXED: Display created time in IST
  */
 
 import { useState } from "react";
@@ -44,10 +44,15 @@ interface SummaryDisplayProps {
 
 export function SummaryDisplay({ summary, onNewSummary }: SummaryDisplayProps) {
   const { toast } = useToast();
-  const [isRefining, setIsRefining] = useState(false);
+  
+  const [loadingStates, setLoadingStates] = useState({
+    shorten: false,
+    refine: false,
+    regenerate: false,
+  });
+  
   const [currentSummary, setCurrentSummary] = useState(summary);
 
-  // Update when new summary prop is received
   if (summary && summary.summaryId !== currentSummary?.summaryId) {
     setCurrentSummary(summary);
   }
@@ -67,9 +72,10 @@ export function SummaryDisplay({ summary, onNewSummary }: SummaryDisplayProps) {
   }
 
   const handleRefine = async (action: "shorten" | "refine" | "regenerate") => {
-    setIsRefining(true);
+    setLoadingStates(prev => ({ ...prev, [action]: true }));
 
     try {
+      console.log(`🔄 Starting ${action} action...`);
       const result = await refineSummary(currentSummary.summaryId, action);
       
       setCurrentSummary({
@@ -78,17 +84,20 @@ export function SummaryDisplay({ summary, onNewSummary }: SummaryDisplayProps) {
       });
 
       toast({
-        title: "Summary refined!",
+        title: "Summary updated!",
         description: `Successfully ${action === "shorten" ? "shortened" : action === "refine" ? "refined" : "regenerated"} the summary`,
       });
+      
+      console.log(`✅ ${action} completed`);
     } catch (error: any) {
+      console.error(`❌ ${action} failed:`, error);
       toast({
         title: "Error",
         description: error.message || `Failed to ${action} summary`,
         variant: "destructive",
       });
     } finally {
-      setIsRefining(false);
+      setLoadingStates(prev => ({ ...prev, [action]: false }));
     }
   };
 
@@ -109,7 +118,24 @@ export function SummaryDisplay({ summary, onNewSummary }: SummaryDisplayProps) {
     }
   };
 
+  // FIXED: Format date in IST
+  const formatDateIST = (timestamp: string) => {
+    const date = new Date(timestamp);
+    // Convert to IST (UTC + 5:30)
+    const istDate = new Date(date.getTime() + (5.5 * 60 * 60 * 1000));
+    
+    return istDate.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
   const { content, metadata } = currentSummary;
+  const isAnyLoading = Object.values(loadingStates).some(state => state);
 
   return (
     <div className="space-y-6">
@@ -123,7 +149,7 @@ export function SummaryDisplay({ summary, onNewSummary }: SummaryDisplayProps) {
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               Context: <span className="capitalize">{metadata.contextType}</span> • 
-              Generated: {new Date(metadata.createdAt).toLocaleString()}
+              Generated: {formatDateIST(metadata.createdAt)} IST
             </p>
           </div>
           <div className="flex space-x-2">
@@ -131,44 +157,47 @@ export function SummaryDisplay({ summary, onNewSummary }: SummaryDisplayProps) {
               variant="outline"
               size="sm"
               onClick={() => handleRefine("shorten")}
-              disabled={isRefining}
+              disabled={isAnyLoading}
             >
-              {isRefining ? (
+              {loadingStates.shorten ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Minimize2 className="h-4 w-4" />
               )}
               <span className="ml-2">Shorten</span>
             </Button>
+            
             <Button
               variant="outline"
               size="sm"
               onClick={() => handleRefine("refine")}
-              disabled={isRefining}
+              disabled={isAnyLoading}
             >
-              {isRefining ? (
+              {loadingStates.refine ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
               <span className="ml-2">Refine</span>
             </Button>
+            
             <Button
               variant="outline"
               size="sm"
               onClick={() => handleRefine("regenerate")}
-              disabled={isRefining}
+              disabled={isAnyLoading}
             >
-              {isRefining ? (
+              {loadingStates.regenerate ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <RefreshCw className="h-4 w-4" />
               )}
               <span className="ml-2">Regenerate</span>
             </Button>
+            
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="default" size="sm">
+                <Button variant="default" size="sm" disabled={isAnyLoading}>
                   <Download className="h-4 w-4" />
                   <span className="ml-2">Download</span>
                 </Button>
@@ -185,8 +214,14 @@ export function SummaryDisplay({ summary, onNewSummary }: SummaryDisplayProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            
             {onNewSummary && (
-              <Button variant="outline" size="sm" onClick={onNewSummary}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={onNewSummary}
+                disabled={isAnyLoading}
+              >
                 New Summary
               </Button>
             )}

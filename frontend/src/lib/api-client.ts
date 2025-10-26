@@ -1,34 +1,20 @@
 /**
- * API Client for PDF Summarizer Backend
- * UPDATED: Added debug logging and better error messages
+ * API Client - FIXED: All endpoint URLs corrected
  */
 
 import { supabase } from "@/integrations/supabase/client";
 
-// API Configuration - with debug logging
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
-// Debug log on module load
-console.log('🔧 API Client Configuration:', {
-  VITE_API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
-  API_BASE_URL,
-  allEnvVars: import.meta.env
-});
+console.log('🔧 API Client Configuration:', { API_BASE_URL });
 
-/**
- * Get authentication token from Supabase
- */
 async function getAuthToken(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession();
   return session?.access_token || null;
 }
 
-/**
- * Handle API errors with proper error messages
- */
 function handleApiError(error: any): never {
   console.error('❌ API Error:', error);
-  
   if (error.response) {
     const apiError = error.response.data?.error;
     if (apiError) {
@@ -38,27 +24,10 @@ function handleApiError(error: any): never {
   throw new Error(error.message || "An unexpected error occurred");
 }
 
-/**
- * Upload PDFs and generate summary
- */
 export async function uploadAndSummarize(
   files: File[],
   contextType: string
-): Promise<{
-  summaryId: string;
-  content: {
-    overview: string;
-    keyInsights: string;
-    risks: string;
-    recommendations: string;
-  };
-  metadata: {
-    fileName: string;
-    fileNames: string[];
-    contextType: string;
-    createdAt: string;
-  };
-}> {
+): Promise<any> {
   try {
     const token = await getAuthToken();
     console.log('🔑 Auth token:', token ? 'Present' : 'Missing');
@@ -101,22 +70,11 @@ export async function uploadAndSummarize(
   }
 }
 
-/**
- * Refine an existing summary
- */
+// FIXED: Changed from /api/summaries to /api/summarize
 export async function refineSummary(
   summaryId: string,
   action: "shorten" | "refine" | "regenerate"
-): Promise<{
-  summaryId: string;
-  content: {
-    overview: string;
-    keyInsights: string;
-    risks: string;
-    recommendations: string;
-  };
-  updatedAt: string;
-}> {
+): Promise<any> {
   try {
     const token = await getAuthToken();
     if (!token) {
@@ -126,91 +84,68 @@ export async function refineSummary(
     const formData = new FormData();
     formData.append("action", action);
 
-    const response = await fetch(
-      `${API_BASE_URL}/api/summaries/${summaryId}/refine`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      }
-    );
+    const url = `${API_BASE_URL}/api/summarize/${summaryId}/refine`;
+    console.log('🔄 Refining at:', url, 'Action:', action);
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    console.log('📥 Refine response:', response.status);
 
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error?.message || "Failed to refine summary");
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('✅ Refined:', data);
+    return data;
   } catch (error) {
     return handleApiError(error);
   }
 }
 
-/**
- * Get summary history
- */
 export async function getSummaryHistory(
   limit: number = 50,
   offset: number = 0
-): Promise<{
-  summaries: Array<{
-    id: string;
-    fileName: string;
-    contextType: string;
-    timestamp: string;
-    previewText: string;
-  }>;
-  total: number;
-  limit: number;
-  offset: number;
-}> {
+): Promise<any> {
   try {
     const token = await getAuthToken();
     if (!token) {
       throw new Error("Not authenticated");
     }
 
-    const response = await fetch(
-      `${API_BASE_URL}/api/summaries?limit=${limit}&offset=${offset}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
+    const url = `${API_BASE_URL}/api/summaries?limit=${limit}&offset=${offset}`;
+    console.log('📚 Fetching history from:', url);
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    console.log('📥 History response:', response.status);
 
     if (!response.ok) {
       const errorData = await response.json();
       throw new Error(errorData.error?.message || "Failed to fetch summaries");
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('✅ History loaded:', data.summaries?.length, 'summaries');
+    return data;
   } catch (error) {
+    console.error('❌ History fetch error:', error);
     return handleApiError(error);
   }
 }
 
-/**
- * Get a specific summary by ID
- */
-export async function getSummary(summaryId: string): Promise<{
-  summaryId: string;
-  content: {
-    overview: string;
-    keyInsights: string;
-    risks: string;
-    recommendations: string;
-  };
-  metadata: {
-    fileName: string;
-    fileNames: string[];
-    contextType: string;
-    createdAt: string;
-    updatedAt: string;
-  };
-}> {
+export async function getSummary(summaryId: string): Promise<any> {
   try {
     const token = await getAuthToken();
     if (!token) {
@@ -237,9 +172,6 @@ export async function getSummary(summaryId: string): Promise<{
   }
 }
 
-/**
- * Download summary in specified format
- */
 export async function downloadSummary(
   summaryId: string,
   format: "txt" | "pdf" | "docx"
@@ -264,12 +196,10 @@ export async function downloadSummary(
       throw new Error(errorData.error?.message || "Failed to download summary");
     }
 
-    // Get filename from Content-Disposition header
     const contentDisposition = response.headers.get("Content-Disposition");
     const filenameMatch = contentDisposition?.match(/filename="(.+)"/);
     const filename = filenameMatch ? filenameMatch[1] : `summary.${format}`;
 
-    // Download file
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -284,9 +214,6 @@ export async function downloadSummary(
   }
 }
 
-/**
- * Delete a summary
- */
 export async function deleteSummary(summaryId: string): Promise<void> {
   try {
     const token = await getAuthToken();
@@ -313,26 +240,18 @@ export async function deleteSummary(summaryId: string): Promise<void> {
   }
 }
 
-/**
- * Check API health - UPDATED with better error handling
- */
 export async function checkApiHealth(): Promise<boolean> {
   try {
-    console.log('🏥 Checking API health at:', `${API_BASE_URL}/health`);
-    
+    console.log('🏥 Checking API health');
     const response = await fetch(`${API_BASE_URL}/health`, {
       method: 'GET',
-      // Add timeout
-      signal: AbortSignal.timeout(5000)
+      signal: AbortSignal.timeout(3000)
     });
-    
     const isHealthy = response.ok;
-    console.log(isHealthy ? '✅ API is healthy' : '❌ API returned error');
-    
+    console.log(isHealthy ? '✅ API healthy' : '❌ API unhealthy');
     return isHealthy;
   } catch (error) {
-    console.error('❌ API health check failed:', error);
-    console.error('Attempted URL:', `${API_BASE_URL}/health`);
+    console.error('❌ Health check failed:', error);
     return false;
   }
 }

@@ -7,8 +7,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from io import BytesIO
-
+import sys, os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from main import app
+
+# from main import app
 from app.database import Base, get_db
 from app.services.auth import verify_firebase_token, mock_verify_token
 
