@@ -26,12 +26,14 @@ function handleApiError(error: any): never {
 
 export async function uploadAndSummarize(
   files: File[],
-  contextType: string
+  contextType: string,
+  userRole: string = "professional",
+  isPrivate: boolean = false
 ): Promise<any> {
   try {
     const token = await getAuthToken();
     console.log('🔑 Auth token:', token ? 'Present' : 'Missing');
-    
+
     if (!token) {
       throw new Error("Not authenticated");
     }
@@ -41,6 +43,8 @@ export async function uploadAndSummarize(
       formData.append("files", file);
     });
     formData.append("contextType", contextType);
+    formData.append("userRole", userRole);
+    formData.append("isPrivate", String(isPrivate));
 
     const url = `${API_BASE_URL}/api/summarize`;
     console.log('📤 Uploading to:', url);
@@ -70,10 +74,10 @@ export async function uploadAndSummarize(
   }
 }
 
-// FIXED: Changed from /api/summaries to /api/summarize
 export async function refineSummary(
   summaryId: string,
-  action: "shorten" | "refine" | "regenerate"
+  action: "shorten" | "refine" | "regenerate" | "shorter" | "detailed" | "focus_methods" | "focus_results",
+  focusArea?: string
 ): Promise<any> {
   try {
     const token = await getAuthToken();
@@ -83,9 +87,12 @@ export async function refineSummary(
 
     const formData = new FormData();
     formData.append("action", action);
+    if (focusArea) {
+      formData.append("focusArea", focusArea);
+    }
 
     const url = `${API_BASE_URL}/api/summarize/${summaryId}/refine`;
-    console.log('🔄 Refining at:', url, 'Action:', action);
+    console.log('🔄 Refining at:', url, 'Action:', action, 'Focus:', focusArea || 'none');
 
     const response = await fetch(url, {
       method: "POST",

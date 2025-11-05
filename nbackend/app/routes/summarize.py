@@ -12,6 +12,7 @@ from app.models.summary import User, Summary
 from app.services.auth import verify_supabase_token as verify_firebase_token
 from app.services.pdf_reader import PDFReader
 from app.services.summarizer import summarization_service
+from app.services.advanced_summarizer import advanced_summarizer
 from app.config import settings
 
 router = APIRouter()
@@ -20,10 +21,12 @@ router = APIRouter()
 async def create_summary(
     files: List[UploadFile] = File(...),
     contextType: str = Form(...),
+    userRole: str = Form("general"),
+    isPrivate: bool = Form(False),
     user: User = Depends(verify_firebase_token),
     db: Session = Depends(get_db)
 ):
-    """Upload PDF files and generate context-aware summary."""
+    """Upload PDF files and generate enhanced hybrid summary."""
     
     # Validate context type
     valid_contexts = ["executive", "student", "analyst", "general"]
@@ -75,26 +78,36 @@ async def create_summary(
         pdf_data = await PDFReader.extract_text_from_multiple_pdfs(files)
         combined_text = pdf_data["combined_text"]
         file_names = pdf_data["file_names"]
-        
+
         print(f"📄 Processing {len(files)} files, {len(combined_text)} chars")
-        
-        # Generate structured summary using Gemini
-        summary_content = summarization_service.generate_structured_summary(
+        print(f"🎭 User Role: {userRole}, Privacy: {isPrivate}")
+
+        # Generate HYBRID summary with all enhancements
+        summary_content = advanced_summarizer.generate_hybrid_summary(
             combined_text,
-            contextType
+            contextType,
+            userRole,
+            isPrivate
         )
-        
-        print(f"✅ Summary generated for context: {contextType}")
-        
-        # Create summary record in database
+
+        print(f"✅ Hybrid summary generated - Keywords: {len(summary_content['keywords'])}")
+
+        # Create enhanced summary record
         new_summary = Summary(
             user_id=user.id,
             file_names=file_names,
             context_type=contextType,
+            user_role=userRole,
             overview=summary_content["overview"],
             key_insights=summary_content["keyInsights"],
-            risks=summary_content["risks"],
-            recommendations=summary_content["recommendations"]
+            risks=summary_content.get("risks", ""),
+            recommendations=summary_content.get("recommendations", ""),
+            extractive_summary=summary_content["extractiveSummary"],
+            abstractive_summary=summary_content["abstractiveSummary"],
+            keywords=summary_content["keywords"],
+            sections=summary_content["sections"],
+            is_private=summary_content["isPrivate"],
+            memory_type=summary_content["memoryType"]
         )
         
         db.add(new_summary)
@@ -103,19 +116,26 @@ async def create_summary(
         
         print(f"💾 Saved summary with ID: {new_summary.id}")
         
-        # Return response
+        # Return enhanced response
         return {
             "summaryId": str(new_summary.id),
             "content": {
                 "overview": new_summary.overview,
                 "keyInsights": new_summary.key_insights,
-                "risks": new_summary.risks,
-                "recommendations": new_summary.recommendations
+                "risks": new_summary.risks or "",
+                "recommendations": new_summary.recommendations or "",
+                "extractiveSummary": new_summary.extractive_summary,
+                "abstractiveSummary": new_summary.abstractive_summary
             },
+            "keywords": new_summary.keywords,
+            "sections": new_summary.sections,
             "metadata": {
                 "fileName": file_names[0] if file_names else "Unknown",
                 "fileNames": file_names,
                 "contextType": contextType,
+                "userRole": userRole,
+                "memoryType": new_summary.memory_type,
+                "isPrivate": new_summary.is_private,
                 "createdAt": new_summary.created_at.isoformat()
             }
         }
@@ -139,18 +159,19 @@ async def create_summary(
 async def refine_summary(
     summary_id: str,
     action: str = Form(...),
+    focusArea: str = Form(None),
     user: User = Depends(verify_firebase_token),
     db: Session = Depends(get_db)
 ):
     """
-    Refine an existing summary.
-    
-    Actions: shorten, refine, regenerate
+    Interactive summary refinement.
+
+    Actions: shorter, detailed, focus_methods, focus_results, shorten, refine, regenerate
     """
     print(f"🔄 Refine request: {action} for summary {summary_id}")
-    
+
     # Validate action
-    valid_actions = ["shorten", "refine", "regenerate"]
+    valid_actions = ["shorter", "detailed", "focus_methods", "focus_results", "shorten", "refine", "regenerate"]
     if action not in valid_actions:
         raise HTTPException(
             status_code=400,
@@ -189,9 +210,19 @@ async def refine_summary(
             full_content += f"\n\n{summary.recommendations}"
         
         print(f"🤖 Applying action: {action}")
-        
-        # Apply action using Gemini
-        if action == "shorten":
+
+        # NEW: Interactive refinement options
+        if action in ["shorter", "detailed", "focus_methods", "focus_results"]:
+            # Use advanced interactive refinement
+            summary.overview = advanced_summarizer.interactive_refinement(
+                summary.overview, action, focusArea or ""
+            )
+            summary.key_insights = advanced_summarizer.interactive_refinement(
+                summary.key_insights, action, focusArea or ""
+            )
+
+        # Legacy actions
+        elif action == "shorten":
             summary.overview = summarization_service.shorten_summary(
                 summary.overview,
                 summary.context_type
@@ -200,7 +231,7 @@ async def refine_summary(
                 summary.key_insights,
                 summary.context_type
             )
-            
+
         elif action == "refine":
             summary.overview = summarization_service.refine_summary(
                 summary.overview,
@@ -210,7 +241,7 @@ async def refine_summary(
                 summary.key_insights,
                 summary.context_type
             )
-            
+
         elif action == "regenerate":
             new_content = summarization_service.generate_structured_summary(
                 full_content,

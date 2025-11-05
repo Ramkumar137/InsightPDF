@@ -19,6 +19,8 @@ interface UploadSectionProps {
 export function UploadSection({ onSummaryGenerated }: UploadSectionProps) {
   const [files, setFiles] = useState<File[]>([]);
   const [contextType, setContextType] = useState("executive");
+  const [userRole, setUserRole] = useState("professional");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
@@ -74,7 +76,7 @@ export function UploadSection({ onSummaryGenerated }: UploadSectionProps) {
     setIsUploading(true);
 
     try {
-      const result = await uploadAndSummarize(files, contextType);
+      const result = await uploadAndSummarize(files, contextType, userRole, isPrivate);
       
       toast({
         title: "Summary generated!",
@@ -168,7 +170,7 @@ export function UploadSection({ onSummaryGenerated }: UploadSectionProps) {
 
       {/* Context Selection */}
       <Card className="p-6">
-        <h3 className="mb-4 font-medium">Select Summary Context</h3>
+        <h3 className="mb-4 font-medium">Summary Context</h3>
         <RadioGroup value={contextType} onValueChange={setContextType} disabled={isUploading}>
           <div className="space-y-3">
             <div className="flex items-center space-x-2">
@@ -217,6 +219,72 @@ export function UploadSection({ onSummaryGenerated }: UploadSectionProps) {
             </div>
           </div>
         </RadioGroup>
+      </Card>
+
+      {/* User Role Selection */}
+      <Card className="p-6">
+        <h3 className="mb-4 font-medium">Your Role</h3>
+        <RadioGroup value={userRole} onValueChange={setUserRole} disabled={isUploading}>
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="student" id="role-student" />
+              <Label htmlFor="role-student" className="cursor-pointer">
+                <div>
+                  <p className="font-medium">Student</p>
+                  <p className="text-sm text-muted-foreground">
+                    Focus on learning and understanding concepts
+                  </p>
+                </div>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="researcher" id="role-researcher" />
+              <Label htmlFor="role-researcher" className="cursor-pointer">
+                <div>
+                  <p className="font-medium">Researcher</p>
+                  <p className="text-sm text-muted-foreground">
+                    Methodology, findings, and academic rigor
+                  </p>
+                </div>
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="professional" id="role-professional" />
+              <Label htmlFor="role-professional" className="cursor-pointer">
+                <div>
+                  <p className="font-medium">Professional</p>
+                  <p className="text-sm text-muted-foreground">
+                    Business value and practical applications
+                  </p>
+                </div>
+              </Label>
+            </div>
+          </div>
+        </RadioGroup>
+      </Card>
+
+      {/* Privacy Settings */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="font-medium">Privacy Settings</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Private documents use short-term memory only
+            </p>
+          </div>
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isPrivate}
+              onChange={(e) => setIsPrivate(e.target.checked)}
+              disabled={isUploading}
+              className="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary"
+            />
+            <span className="text-sm font-medium">
+              {isPrivate ? "Private (Short-term)" : "Shared (Long-term)"}
+            </span>
+          </label>
+        </div>
       </Card>
 
       {/* Submit Button */}

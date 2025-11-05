@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Plus, FileText, Loader2, RefreshCw } from "lucide-react";
+import { X, Plus, FileText, Loader2, RefreshCw, Shield, Clock, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { getSummaryHistory, getSummary } from "@/lib/api-client";
 
@@ -220,11 +220,35 @@ export function SummaryHistory({
                           {formatDate(summary.timestamp)}
                         </span>
                       </div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center flex-wrap gap-2">
                         <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary capitalize">
                           {summary.contextType}
                         </span>
+                        {summary.isPrivate ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700">
+                            <Shield className="h-3 w-3" />
+                            Private
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
+                            <Clock className="h-3 w-3" />
+                            Shared
+                          </span>
+                        )}
                       </div>
+                      {summary.keywords && summary.keywords.length > 0 && (
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <Tag className="h-3 w-3 text-muted-foreground" />
+                          {summary.keywords.slice(0, 3).map((keyword: string, idx: number) => (
+                            <span key={idx} className="text-xs text-muted-foreground">
+                              {keyword}{idx < Math.min(summary.keywords.length, 3) - 1 ? ',' : ''}
+                            </span>
+                          ))}
+                          {summary.keywords.length > 3 && (
+                            <span className="text-xs text-muted-foreground">+{summary.keywords.length - 3}</span>
+                          )}
+                        </div>
+                      )}
                       <p className="text-xs text-muted-foreground line-clamp-2">
                         {summary.previewText}
                       </p>

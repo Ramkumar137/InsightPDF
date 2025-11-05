@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { User } from "@supabase/supabase-js";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { UploadSection } from "@/components/dashboard/UploadSection";
-import { SummaryDisplay } from "@/components/dashboard/SummaryDisplay";
+import { EnhancedSummaryDisplay } from "@/components/dashboard/EnhancedSummaryDisplay";
 import { SummaryHistory } from "@/components/dashboard/SummaryHistory";
 import { useToast } from "@/hooks/use-toast";
 
@@ -202,7 +202,7 @@ export default function Dashboard() {
                 <UploadSection onSummaryGenerated={handleSummaryGenerated} />
               </div>
             ) : (
-              <SummaryDisplay
+              <EnhancedSummaryDisplay
                 summary={currentSummary}
                 onNewSummary={handleNewSummary}
               />
